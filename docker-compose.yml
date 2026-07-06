@@ -1,0 +1,52 @@
+services:
+  app:
+    image: php:8.3-fpm
+    container_name: coinbet-app
+    working_dir: /var/www/api
+    volumes:
+      - ./api:/var/www/api
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: coinbet
+      DB_USERNAME: coinbet
+      DB_PASSWORD: secret
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # Nota: la imagen oficial php-fpm no trae pdo_mysql; ver Dockerfile alternativo
+    # en el README si prefieres una imagen propia. Para empezar rápido:
+    command: >
+      sh -c "docker-php-ext-install pdo_mysql > /dev/null 2>&1 || true && php-fpm"
+
+  nginx:
+    image: nginx:alpine
+    container_name: coinbet-nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - ./api:/var/www/api
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+
+  mysql:
+    image: mysql:8.0
+    container_name: coinbet-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: coinbet
+      MYSQL_USER: coinbet
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:
