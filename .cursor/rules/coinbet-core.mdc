@@ -1,0 +1,50 @@
+---
+description: CoinBet — arquitectura y convenciones globales del proyecto
+alwaysApply: true
+---
+
+# CoinBet — Reglas globales
+
+Simulador de apuestas deportivas con moneda 100% virtual (sin dinero real). Monorepo: `api/` (Laravel 12, PHP 8.3, MySQL, Pest) + `web/` (React 19, TS, Vite, TanStack Query, Zustand, Tailwind). Es un proyecto de portfolio: **la calidad arquitectónica es el producto**. Código en inglés; conversación en español.
+
+## Arquitectura backend (innegociable)
+
+Bounded contexts en `api/src/` (namespace `CoinBet\`), tres capas cada uno:
+
+- `Domain/` — PHP puro: agregados, value objects, events, excepciones (extienden `DomainException`), interfaces de repositorio. **PROHIBIDO importar Illuminate\*, Eloquent o facades aquí.**
+- `Application/` — casos de uso: carpeta por caso (`PlaceBet/` → `PlaceBetCommand` + `PlaceBetHandler`). Depende solo de Domain.
+- `Infrastructure/` — implementaciones Eloquent de repositorios, controllers, FormRequests, API Resources. Bindings interfaz→implementación en ServiceProvider.
+
+Contexts: `Wallet`, `Betting`, `Shared`. `app/` de Laravel solo contiene arranque del framework, nunca lógica de negocio. Controllers finos: FormRequest → Command → Handler → Resource. Excepciones de dominio se mapean a HTTP (409/422) en un handler central.
+
+## Invariantes del dominio (proteger en Domain, demostrar con tests)
+
+1. Saldo del monedero nunca negativo (`InsufficientFunds`).
+2. Saldo = suma de `LedgerEntry` inmutables. Correcciones = nuevos movimientos (reversal). Jamás update/delete de un entry ni columna de saldo sobreescrita.
+3. Dinero = enteros (VO `Coins`). Nunca float para cantidades.
+4. La cuota se congela al apostar (la apuesta guarda su cuota).
+5. No apostar en eventos empezados/finalizados.
+6. Estados de apuesta `placed → won | lost | void`; transiciones inválidas lanzan excepción de dominio.
+7. Settlement idempotente: resolver dos veces no paga dos veces.
+8. Apostar = débito + creación de apuesta en la misma transacción con `lockForUpdate`.
+9. Anti-corruption layer: el dominio no conoce API-Sports. `SportsDataProviderInterface` + adapters en Infrastructure con `external_id`. Todo se cachea en BD propia vía scheduler; casos de uso y front leen solo de la BD.
+
+## Estilo PHP
+
+- `declare(strict_types=1);` siempre. Clases `final`; VOs y DTOs `readonly`. Constructores privados + named constructors. Enums nativos para estados.
+- Test-first en dominio: cada regla nueva nace con un test Pest en `tests/Unit/<Context>/` sin Laravel ni BD. Endpoints con tests de Feature (incluidos concurrencia e idempotencia).
+- Pint antes de commit. No instalar paquetes sin preguntar.
+
+## Estilo React
+
+- Features: `src/features/<feature>/{api,components,pages}`; compartido en `src/shared/{ui,api,lib}`.
+- TanStack Query para todo estado de servidor; Zustand solo sesión/UI. No duplicar estado de servidor.
+- TS estricto, sin `any`. Solo consumir la API propia (`VITE_API_URL`).
+
+## Git
+
+Conventional Commits (`feat(wallet): ...`). Commits atómicos, CI en verde, nunca commitear `.env` ni `API_SPORTS_KEY`.
+
+## Prohibido
+
+Lógica de negocio en controllers/modelos Eloquent; Illuminate en Domain; floats para dinero; llamar a API-Sports en caliente; saltarse tests de dominio; features fuera del roadmap sin pedirlo el usuario.

@@ -1,0 +1,34 @@
+---
+description: Reglas del frontend React — se aplican al editar TypeScript
+globs:
+  - "web/**/*.ts"
+  - "web/**/*.tsx"
+alwaysApply: false
+---
+
+# Frontend CoinBet (web/)
+
+## Estructura
+
+- Código por feature: `src/features/<feature>/` con `api/` (hooks de TanStack Query), `components/` (presentacionales) y `pages/` (contenedores conectados a datos y router).
+- Reutilizable en `src/shared/`: `ui/` (componentes base), `api/` (cliente HTTP + tipos de la API), `lib/` (helpers).
+- Features previstas: `events` (partidos con cuotas), `betting` (boleto, mis apuestas), `wallet` (saldo y movimientos), `auth`.
+
+## Datos
+
+- TanStack Query es la única fuente de estado de servidor. Convención: hooks `useEvents()`, `usePlaceBet()` en `features/<feature>/api/`. Tras cada mutación, `invalidateQueries` de las queries afectadas (apostar invalida wallet + bets).
+- Zustand solo para sesión (token, usuario) y estado de UI global. Nunca copiar respuestas de la API a Zustand.
+- Cliente HTTP único en `shared/api/client.ts` con `VITE_API_URL` y el token en header. Errores de la API (409/422 de dominio) se muestran al usuario con su mensaje, no se silencian.
+- Tipos de las respuestas de la API centralizados en `shared/api/types.ts`, alineados con los API Resources del backend.
+
+## Estilo
+
+- TypeScript estricto: prohibido `any` (usa `unknown` + narrowing si hace falta).
+- Componentes función + hooks; sin clases. Props tipadas con interfaces.
+- Tailwind para estilos; sin CSS suelto salvo `index.css`.
+- Cantidades de monedas: enteros que llegan de la API; formatear solo en presentación (helper en `shared/lib/`). Nunca hacer aritmética de monedas en el front.
+
+## Prohibido
+
+- Llamar a API-Sports o cualquier API externa desde el front: solo la API propia.
+- Lógica de negocio en el front (validar saldo, calcular payouts): el backend es la fuente de verdad; el front solo pre-visualiza (payout estimado = importe × cuota mostrada, marcado como estimación).

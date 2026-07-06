@@ -1,0 +1,38 @@
+---
+description: Reglas del backend Laravel/DDD — se aplican al editar PHP
+globs:
+  - "api/**/*.php"
+alwaysApply: false
+---
+
+# Backend CoinBet (api/)
+
+## Al crear código nuevo
+
+- Decide primero la capa: ¿es una regla de negocio? → `Domain`. ¿Orquestación de un caso de uso? → `Application`. ¿HTTP, Eloquent, API externa, cola? → `Infrastructure`.
+- Toda regla de dominio empieza por su test en `tests/Unit/<Context>/` (Pest, sin `RefreshDatabase`, sin Laravel). Escribe el test, hazlo fallar, implementa.
+- Nuevos casos de uso: carpeta `Application/<UseCase>/` con `<UseCase>Command` (readonly DTO) y `<UseCase>Handler` (un método `__invoke` o `handle`). El handler recibe interfaces por constructor.
+- Nuevos endpoints: ruta → FormRequest (validación de forma, no de negocio) → Handler → API Resource. Las reglas de negocio viven en el dominio y sus violaciones llegan como excepciones de dominio.
+
+## Patrones del proyecto
+
+- Value objects: `final readonly`, constructor privado, `::of()` / factory semántico, métodos que devuelven nuevas instancias (inmutabilidad).
+- Agregados: constructor privado, factories con nombre (`Wallet::open()`, `Bet::place()`), reconstrucción con `::fromX()`. Exponen comportamiento, no setters.
+- Repositorios: interfaz en `Domain/Repository/`, implementación Eloquent en `Infrastructure/Persistence/`, binding en ServiceProvider del context.
+- IDs: strings (ULID/UUID) generados fuera del dominio y pasados como parámetro.
+- Fechas: `DateTimeImmutable` inyectado (nunca `now()` dentro del dominio — rompe los tests).
+
+## Persistencia del ledger
+
+Tabla `ledger_entries` es append-only: solo INSERT. Nada de `update()` ni `delete()` sobre entradas. El saldo se calcula (SUM) o se cachea con invalidación explícita, pero la fuente de verdad son los movimientos.
+
+## Concurrencia
+
+`PlaceBet` y el settlement van dentro de `DB::transaction()` con `lockForUpdate()` sobre las filas del monedero/apuestas afectadas. Todo cambio en esta zona requiere mantener (o añadir) el test de Feature que simula la carrera.
+
+## Errores comunes a evitar aquí
+
+- Meter `use Illuminate\...` en un fichero de `Domain/` → mover la dependencia a Infrastructure o invertirla con una interfaz.
+- Validar reglas de negocio en FormRequests (solo validan forma: tipos, requeridos, formatos).
+- Devolver modelos Eloquent crudos desde controllers → siempre API Resources.
+- Lanzar `\Exception` genéricas → crear excepción de dominio específica en `Domain/Exception/`.
